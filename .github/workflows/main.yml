@@ -21,23 +21,73 @@ jobs:
             gcc-arm-linux-gnueabi git libncurses5-dev libssl-dev \
             make python3 unzip wget zip
 
-      - name: Apply HID patch
+      - name: Download HID patch
         run: |
           mkdir -p patches
           wget -O patches/hid-gadget.patch \
             https://raw.githubusercontent.com/pelya/android-keyboard-gadget/master/patches/existing_tested/by-generic-kernel-version/generic_kernel_3.18.patch
 
+          echo "Patch downloaded:"
+          ls -lh patches/hid-gadget.patch
+
+          echo "First lines of patch:"
+          head -40 patches/hid-gadget.patch
+
+      - name: Debug kernel source structure
+        run: |
           cd kernel
 
-          echo "Проверяем патч..."
-          patch --dry-run -p1 < ../patches/hid-gadget.patch
+          echo "Current directory:"
+          pwd
 
-          echo "Применяем патч..."
-          patch -p1 < ../patches/hid-gadget.patch
+          echo "Top-level files:"
+          ls -la
+
+          echo "Kernel version:"
+          make kernelversion || true
+
+          echo "Find android.c:"
+          find . -name "android.c" -print || true
+
+          echo "Find f_hid.c:"
+          find . -name "f_hid.c" -print || true
+
+          echo "Find u_hid.h:"
+          find . -name "u_hid.h" -print || true
+
+          echo "Find android.h:"
+          find . -name "android.h" -print || true
+
+          echo "Find HID-related files:"
+          find . -iname "*hid*" -print | head -200 || true
+
+          echo "drivers/usb/gadget tree:"
+          find drivers/usb/gadget -maxdepth 4 -type f -print | head -200 || true
+
+      - name: Test HID patch dry-run
+        run: |
+          cd kernel
+
+          echo "Testing patch with -p1..."
+          patch --batch --dry-run -p1 < ../patches/hid-gadget.patch || true
+
+          echo "Testing patch with -p0..."
+          patch --batch --dry-run -p0 < ../patches/hid-gadget.patch || true
+
+          echo "Testing patch with -p2..."
+          patch --batch --dry-run -p2 < ../patches/hid-gadget.patch || true
+
+      - name: Apply HID patch
+        run: |
+          cd kernel
+
+          echo "Applying patch..."
+          patch --batch -p1 < ../patches/hid-gadget.patch
 
       - name: Build kernel Image.gz-dtb
         run: |
           cd kernel
+
           export ARCH=arm64
           export SUBARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
