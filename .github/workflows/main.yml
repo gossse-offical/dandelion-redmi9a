@@ -8,8 +8,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Set up job
-        uses: actions/checkout@v3
+      - name: Checkout kernel source
+        uses: actions/checkout@v4
+        with:
+          path: kernel
 
       - name: Install dependencies
         run: |
@@ -24,12 +26,16 @@ jobs:
           mkdir -p patches
           wget -O patches/hid-gadget.patch \
             https://raw.githubusercontent.com/pelya/android-keyboard-gadget/master/patches/existing_tested/by-generic-kernel-version/generic_kernel_3.18.patch
-          mkdir -p kernel
-          cp patches/hid-gadget.patch kernel/
-          cd kernel
-          patch -p1 < hid-gadget.patch
 
-      - name: Build kernel (Image.gz-dtb)
+          cd kernel
+
+          echo "Проверяем патч..."
+          patch --dry-run -p1 < ../patches/hid-gadget.patch
+
+          echo "Применяем патч..."
+          patch -p1 < ../patches/hid-gadget.patch
+
+      - name: Build kernel Image.gz-dtb
         run: |
           cd kernel
           export ARCH=arm64
@@ -38,6 +44,7 @@ jobs:
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
           export KCFLAGS=-Wno-error
           export HOSTCFLAGS=-Wno-error
+
           make dandelion_defconfig
           make -j$(nproc) Image.gz-dtb
 
