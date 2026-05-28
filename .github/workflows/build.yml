@@ -90,11 +90,52 @@ jobs:
           echo "Converting ALL old MTK Python2 DCT scripts to Python3..."
           python3 -m lib2to3 -w -n tools/dct || true
 
+          echo "Adding Python3 cmp() compatibility..."
+          python3 - <<'PY'
+          from pathlib import Path
+
+          helper = '''
+          # Python 3 compatibility: Python 2 cmp() replacement
+          try:
+              cmp
+          except NameError:
+              def cmp(a, b):
+                  return (a > b) - (a < b)
+
+          '''
+
+          for path in Path("tools/dct").rglob("*.py"):
+              text = path.read_text(errors="ignore")
+
+              if "cmp(" not in text:
+                  continue
+
+              if "def cmp(a, b)" in text:
+                  continue
+
+              lines = text.splitlines(True)
+              insert_at = 0
+
+              if lines and lines[0].startswith("#!"):
+                  insert_at = 1
+
+              while insert_at < len(lines) and (
+                  "coding" in lines[insert_at] or
+                  lines[insert_at].strip() == ""
+              ):
+                  insert_at += 1
+
+              lines.insert(insert_at, helper)
+              path.write_text("".join(lines))
+
+              print("patched cmp compatibility:", path)
+          PY
+
           echo "Checking remaining old print syntax:"
           grep -R "print " -n tools/dct | head -100 || true
 
-          echo "Checking DCT folders:"
-          find tools/dct -maxdepth 3 -type f -name "*.py" | sort | head -200
+          echo "Checking cmp usage:"
+          grep -R "cmp(" -n tools/dct | head -100 || true
 
           echo "Python versions:"
           python --version
