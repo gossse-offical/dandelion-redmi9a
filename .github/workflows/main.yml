@@ -24,6 +24,7 @@ jobs:
           mkdir -p patches
           wget -O patches/hid-gadget.patch \
             https://raw.githubusercontent.com/pelya/android-keyboard-gadget/master/patches/existing_tested/by-generic-kernel-version/generic_kernel_3.18.patch
+          mkdir -p kernel
           cp patches/hid-gadget.patch kernel/
           cd kernel
           patch -p1 < hid-gadget.patch
