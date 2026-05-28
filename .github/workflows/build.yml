@@ -8,36 +8,103 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout kernel source
+      - name: Checkout wrapper repo
         uses: actions/checkout@v4
-        with:
-          path: kernel
 
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            bc bison build-essential ccache curl flex gcc-aarch64-linux-gnu \
-            gcc-arm-linux-gnueabi git libncurses5-dev libssl-dev \
-            make python3 unzip wget zip
+            bc bison build-essential ccache clang curl flex \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
+            git libncurses5-dev libssl-dev lld llvm make \
+            python3 unzip wget zip
 
-      - name: Apply HID patch
+      - name: Clone kernel source
         run: |
-          mkdir -p patches
-          wget -O patches/hid-gadget.patch \
+          git clone --depth=1 --single-branch \
+            -b dandelion-q-oss \
+            https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git \
+            kernel
+
+      - name: Download HID patch
+        run: |
+          wget -O hid-gadget.patch \
             https://raw.githubusercontent.com/pelya/android-keyboard-gadget/master/patches/existing_tested/by-generic-kernel-version/generic_kernel_3.18.patch
 
+          echo "Patch downloaded:"
+          ls -lh hid-gadget.patch
+
+          echo "Patch header:"
+          head -60 hid-gadget.patch
+
+      - name: Debug kernel source structure
+        run: |
           cd kernel
 
-          echo "Проверяем патч..."
-          patch --dry-run -p1 < ../patches/hid-gadget.patch
+          echo "Current directory:"
+          pwd
 
-          echo "Применяем патч..."
-          patch -p1 < ../patches/hid-gadget.patch
+          echo "Kernel top-level:"
+          ls -la
+
+          echo "Kernel version:"
+          make kernelversion || true
+
+          echo "Available dandelion configs:"
+          find arch/arm64/configs -maxdepth 1 -type f | grep -i "dandelion" || true
+
+          echo "Search android.c:"
+          find . -name "android.c" -print || true
+
+          echo "Search f_hid.c:"
+          find . -name "f_hid.c" -print || true
+
+          echo "Search u_hid.h:"
+          find . -name "u_hid.h" -print || true
+
+          echo "Search android.h:"
+          find . -name "android.h" -print || true
+
+          echo "Search HID-related files:"
+          find . -iname "*hid*" -print | head -300 || true
+
+          echo "USB gadget tree:"
+          find drivers/usb/gadget -maxdepth 5 -type f -print | head -300 || true
+
+      - name: Test HID patch
+        run: |
+          cd kernel
+
+          echo "Testing HID patch with -p1..."
+          if patch --batch --dry-run -p1 < ../hid-gadget.patch; then
+            echo "HID patch is compatible with -p1"
+          else
+            echo "::warning::HID patch is NOT compatible with this kernel source using -p1"
+          fi
+
+          echo "Testing HID patch with -p0..."
+          patch --batch --dry-run -p0 < ../hid-gadget.patch || true
+
+          echo "Testing HID patch with -p2..."
+          patch --batch --dry-run -p2 < ../hid-gadget.patch || true
+
+      - name: Apply HID patch if compatible
+        run: |
+          cd kernel
+
+          if patch --batch --dry-run -p1 < ../hid-gadget.patch; then
+            echo "Applying HID patch..."
+            patch --batch -p1 < ../hid-gadget.patch
+          else
+            echo "::warning::Skipping HID patch because it does not match this kernel source."
+            echo "::warning::Build will continue with CONFIGFS HID/RNDIS options only."
+          fi
 
       - name: Build kernel Image.gz-dtb
         run: |
           cd kernel
+
           export ARCH=arm64
           export SUBARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
@@ -45,15 +112,36 @@ jobs:
           export KCFLAGS=-Wno-error
           export HOSTCFLAGS=-Wno-error
 
+          echo "Using original kernel dandelion_defconfig..."
           make dandelion_defconfig
-          make -j$(nproc) Image.gz-dtb
+
+          echo "Merging local NetHunter/HID config fragment..."
+          cat ../dandelion_defconfig >> .config
+          make olddefconfig
+
+          echo "Final HID/RNDIS config:"
+          grep -E "CONFIG_USB_GADGET|CONFIG_USB_CONFIGFS|CONFIG_USB_CONFIGFS_HID|CONFIG_USB_CONFIGFS_RNDIS|CONFIG_HID|CONFIG_HID_GENERIC|CONFIG_USB_HID|CONFIG_USB_NET_RNDIS_HOST" .config || true
+
+          echo "Building..."
+          make -j$(nproc) CC=clang Image.gz-dtb
+
+          echo "Built files:"
+          ls -lh arch/arm64/boot/Image.gz-dtb
 
       - name: Prepare flashable ZIP
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git AnyKernel
-          cp kernel/arch/arm64/boot/Image.gz-dtb AnyKernel/
+
+          cp -f anykernel.sh AnyKernel/anykernel.sh
+          cp -f kernel/arch/arm64/boot/Image.gz-dtb AnyKernel/Image.gz-dtb
+
+          rm -rf AnyKernel/.git AnyKernel/.github
+
           cd AnyKernel
           zip -r9 ../Kernel.zip ./*
+
+          cd ..
+          ls -lh Kernel.zip
 
       - name: Upload flashable ZIP
         uses: actions/upload-artifact@v4
