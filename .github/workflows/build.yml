@@ -5,7 +5,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout wrapper repo
@@ -15,10 +15,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            bc bison build-essential ccache clang curl flex \
+            bc bison build-essential ccache curl flex \
             gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
-            git libncurses5-dev libssl-dev lld llvm make \
-            python3 unzip wget zip
+            git libncurses5-dev libssl-dev libelf-dev \
+            make python3 unzip wget zip
 
       - name: Clone kernel source
         run: |
@@ -35,18 +35,9 @@ jobs:
           echo "Patch downloaded:"
           ls -lh hid-gadget.patch
 
-          echo "Patch header:"
-          head -60 hid-gadget.patch
-
       - name: Debug kernel source structure
         run: |
           cd kernel
-
-          echo "Current directory:"
-          pwd
-
-          echo "Kernel top-level:"
-          ls -la
 
           echo "Kernel version:"
           make kernelversion || true
@@ -60,16 +51,10 @@ jobs:
           echo "Search f_hid.c:"
           find . -name "f_hid.c" -print || true
 
-          echo "Search u_hid.h:"
-          find . -name "u_hid.h" -print || true
-
           echo "Search android.h:"
           find . -name "android.h" -print || true
 
-          echo "Search HID-related files:"
-          find . -iname "*hid*" -print | head -300 || true
-
-          echo "USB gadget tree:"
+          echo "USB gadget files:"
           find drivers/usb/gadget -maxdepth 5 -type f -print | head -300 || true
 
       - name: Test HID patch
@@ -78,16 +63,10 @@ jobs:
 
           echo "Testing HID patch with -p1..."
           if patch --batch --dry-run -p1 < ../hid-gadget.patch; then
-            echo "HID patch is compatible with -p1"
+            echo "HID patch is compatible."
           else
-            echo "::warning::HID patch is NOT compatible with this kernel source using -p1"
+            echo "::warning::HID patch is NOT compatible with this kernel source."
           fi
-
-          echo "Testing HID patch with -p0..."
-          patch --batch --dry-run -p0 < ../hid-gadget.patch || true
-
-          echo "Testing HID patch with -p2..."
-          patch --batch --dry-run -p2 < ../hid-gadget.patch || true
 
       - name: Apply HID patch if compatible
         run: |
@@ -98,7 +77,7 @@ jobs:
             patch --batch -p1 < ../hid-gadget.patch
           else
             echo "::warning::Skipping HID patch because it does not match this kernel source."
-            echo "::warning::Build will continue with CONFIGFS HID/RNDIS options only."
+            echo "::warning::Build will continue with existing CONFIGFS HID/RNDIS options."
           fi
 
       - name: Build kernel Image.gz-dtb
@@ -115,15 +94,30 @@ jobs:
           echo "Using original kernel dandelion_defconfig..."
           make dandelion_defconfig
 
-          echo "Merging local NetHunter/HID config fragment..."
+          echo "Merging local config fragment..."
           cat ../dandelion_defconfig >> .config
+
+          echo "Disabling broken stack protector options..."
+          scripts/config --disable CC_STACKPROTECTOR || true
+          scripts/config --disable CC_STACKPROTECTOR_REGULAR || true
+          scripts/config --disable CC_STACKPROTECTOR_STRONG || true
+
+          sed -i \
+            -e 's/^CONFIG_CC_STACKPROTECTOR=y/# CONFIG_CC_STACKPROTECTOR is not set/' \
+            -e 's/^CONFIG_CC_STACKPROTECTOR_REGULAR=y/# CONFIG_CC_STACKPROTECTOR_REGULAR is not set/' \
+            -e 's/^CONFIG_CC_STACKPROTECTOR_STRONG=y/# CONFIG_CC_STACKPROTECTOR_STRONG is not set/' \
+            .config
+
           make olddefconfig
 
-          echo "Final HID/RNDIS config:"
-          grep -E "CONFIG_USB_GADGET|CONFIG_USB_CONFIGFS|CONFIG_USB_CONFIGFS_HID|CONFIG_USB_CONFIGFS_RNDIS|CONFIG_HID|CONFIG_HID_GENERIC|CONFIG_USB_HID|CONFIG_USB_NET_RNDIS_HOST" .config || true
+          echo "Final stack protector config:"
+          grep -E "CONFIG_CC_STACKPROTECTOR" .config || true
 
-          echo "Building..."
-          make -j$(nproc) CC=clang Image.gz-dtb
+          echo "Final HID/RNDIS config:"
+          grep -E "CONFIG_USB_GADGET|CONFIG_USB_CONFIGFS|CONFIG_USB_CONFIGFS_HID|CONFIG_USB_CONFIGFS_RNDIS|CONFIG_USB_CONFIGFS_F_HID|CONFIG_HID|CONFIG_USB_HID" .config || true
+
+          echo "Building with GCC..."
+          make -j$(nproc) Image.gz-dtb
 
           echo "Built files:"
           ls -lh arch/arm64/boot/Image.gz-dtb
