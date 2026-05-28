@@ -201,6 +201,50 @@ jobs:
 
           echo "After patch:"
           grep -n "kpdpwr_status\|kpdwr_status" drivers/input/keyboard/mediatek/kpd.c || true
+
+      - name: Relax old kernel warnings
+        run: |
+          cd kernel
+
+          echo "Removing -Werror from old kernel makefiles..."
+          grep -RIl -- "-Werror" . \
+            --include="Makefile" \
+            --include="Kbuild" \
+            --include="*.mk" \
+            | xargs -r sed -i \
+              -e 's/[[:space:]]-Werror=[^[:space:]]*//g' \
+              -e 's/[[:space:]]-Werror//g'
+
+          cat >> Makefile <<'EOF'
+
+          # Old Android/MTK kernel build fixes for newer GCC
+          KBUILD_CFLAGS += -Wno-error
+          KBUILD_CFLAGS += -Wno-error=format
+          KBUILD_CFLAGS += -Wno-format
+          KBUILD_CFLAGS += -Wno-psabi
+          KBUILD_CFLAGS += -Wno-misleading-indentation
+          KBUILD_CFLAGS += -Wno-error=misleading-indentation
+          EOF
+      - name: Fix missing FocalTech firmware include
+        run: |
+          cd kernel
+
+          FW_DIR="drivers/input/touchscreen/mediatek/ft8006s_spi/include/firmware"
+          FW_FILE="$FW_DIR/fw_helitai_v0e.i"
+
+          echo "Checking FocalTech firmware folder..."
+          mkdir -p "$FW_DIR"
+          find drivers/input/touchscreen/mediatek/ft8006s_spi -type f -name "*.i" -print || true
+
+          if [ ! -f "$FW_FILE" ]; then
+            echo "::warning::Missing $FW_FILE"
+            echo "::warning::Creating empty firmware include stub to allow kernel build."
+            : > "$FW_FILE"
+          fi
+
+          echo "Result:"
+          ls -lh "$FW_FILE"
+          
       - name: Build kernel Image.gz-dtb
         run: |
           cd kernel
@@ -210,7 +254,7 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
         
-          export KCFLAGS="-Wno-error -Wno-error=format -Wno-format -Wno-psabi"
+          export KCFLAGS="-Wno-error -Wno-error=format -Wno-format -Wno-psabi -Wno-misleading-indentation -Wno-error=misleading-indentation"
           export HOSTCFLAGS="-fcommon -Wno-error"
           export PYTHON=/usr/bin/python2
 
