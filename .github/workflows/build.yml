@@ -118,6 +118,30 @@ jobs:
 
           echo "drivers/devfreq/Makefile tail:"
           tail -30 drivers/devfreq/Makefile 
+      - name: Force MT6765 DVFSRC register header
+        run: |
+          cd kernel
+
+          echo "Forcing MT6765 DVFSRC register header..."
+
+          cat > drivers/devfreq/mtk_dvfsrc_reg.h <<'EOF'
+          /*
+           * Forced MT6765 DVFSRC register map for dandelion / Redmi 9A.
+           * Xiaomi/MTK source sometimes does not select CONFIG_MACH_MT6765
+           * correctly during external kernel build.
+           */
+          #ifndef __MTK_DVFSRC_REG_H
+          #define __MTK_DVFSRC_REG_H
+
+          #include "mtk_dvfsrc_reg_mt6765.h"
+
+          #endif /* __MTK_DVFSRC_REG_H */
+          EOF
+
+          echo "Checking DVFSRC register definitions:"
+          grep -n "DVFSRC_EMI_REQUEST" drivers/devfreq/mtk_dvfsrc_reg_mt6765.h || true
+          grep -n "DVFSRC_SW_BW_0" drivers/devfreq/mtk_dvfsrc_reg_mt6765.h || true
+          grep -n "DVFSRC_RSRV_0" drivers/devfreq/mtk_dvfsrc_reg_mt6765.h || true
 
       - name: Fix old kernel scripts for modern compiler
         run: |
