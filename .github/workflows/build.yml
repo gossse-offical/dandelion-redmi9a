@@ -88,7 +88,11 @@ jobs:
           echo 'HOSTCFLAGS += -fcommon' >> Makefile
 
           echo "Converting old MTK Python2 DCT scripts to Python3..."
-          python3 -m lib2to3 -w tools/dct/*.py || true
+          python3 -m lib2to3 -w tools/dct/*.py tools/dct/obj/*.py || true
+
+          echo "Checking DCT files:"
+          ls -la tools/dct
+          ls -la tools/dct/obj | head -50
 
           echo "Checking python version:"
           python --version
@@ -105,6 +109,12 @@ jobs:
 
           export KCFLAGS="-Wno-error"
           export HOSTCFLAGS="-fcommon -Wno-error"
+
+          # Важно для старых MTK DCT Python-скриптов
+          export PYTHONPATH="$PWD/tools/dct:$PWD/tools/dct/obj:${PYTHONPATH:-}"
+
+          echo "PYTHONPATH:"
+          echo "$PYTHONPATH"
 
           echo "Using original kernel dandelion_defconfig..."
           make dandelion_defconfig
