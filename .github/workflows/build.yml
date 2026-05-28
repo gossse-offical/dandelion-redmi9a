@@ -93,6 +93,31 @@ jobs:
             echo "::warning::Skipping HID patch because it does not match this kernel source."
             echo "::warning::Build will continue with existing CONFIGFS HID/RNDIS options."
           fi
+      - name: Fix MTK devfreq headers
+        run: |
+          cd kernel
+
+          echo "Fixing helio-dvfsrc include path..."
+
+          cat >> drivers/devfreq/Makefile <<'EOF'
+
+          # Fix for MTK/Xiaomi kernel build on external toolchain
+          ccflags-y += -I$(srctree)/drivers/devfreq
+          ccflags-y += -I$(srctree)/drivers/misc/mediatek/mmp/
+          EOF
+
+          echo "Patching local include style..."
+          sed -i 's/#include <helio-dvfsrc.h>/#include "helio-dvfsrc.h"/g' \
+            drivers/devfreq/helio-dvfsrc-opp.c || true
+
+          sed -i 's/#include <helio-dvfsrc-mt6765.h>/#include "helio-dvfsrc-mt6765.h"/g' \
+            drivers/devfreq/helio-dvfsrc.h || true
+
+          echo "Checking helio-dvfsrc headers:"
+          find drivers/devfreq -name "helio-dvfsrc*.h" -print || true
+
+          echo "drivers/devfreq/Makefile tail:"
+          tail -30 drivers/devfreq/Makefile 
 
       - name: Fix old kernel scripts for modern compiler
         run: |
