@@ -186,17 +186,21 @@ jobs:
         run: |
           cd kernel
 
-          echo "Fixing MTK keyboard printk format warning..."
+          echo "Before patch:"
+          grep -n "kpdpwr_status\|kpdwr_status" drivers/input/keyboard/mediatek/kpd.c || true
 
-          grep -n "kpdwr_status" drivers/input/keyboard/mediatek/kpd.c || true
+          # Правильный фикс: unsigned long надо печатать через %lu, не через %d
+          sed -i \
+            's/kpdpwr_status = %d\\n", kpdpwr_status/kpdpwr_status = %lu\\n", kpdpwr_status/g' \
+            drivers/input/keyboard/mediatek/kpd.c
 
+          # На всякий случай, если в другом исходнике встретится вариант без p
           sed -i \
             's/kpdwr_status = %d\\n", kpdwr_status/kpdwr_status = %lu\\n", kpdwr_status/g' \
             drivers/input/keyboard/mediatek/kpd.c
 
           echo "After patch:"
-          grep -n "kpdwr_status" drivers/input/keyboard/mediatek/kpd.c || true
-          
+          grep -n "kpdpwr_status\|kpdwr_status" drivers/input/keyboard/mediatek/kpd.c || true
       - name: Build kernel Image.gz-dtb
         run: |
           cd kernel
