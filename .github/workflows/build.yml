@@ -18,7 +18,7 @@ jobs:
             bc bison build-essential ccache curl flex \
             gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
             git libncurses5-dev libssl-dev libelf-dev \
-            make python3 unzip wget zip
+            make python3 python-is-python3 unzip wget zip
 
       - name: Clone kernel source
         run: |
@@ -80,6 +80,20 @@ jobs:
             echo "::warning::Build will continue with existing CONFIGFS HID/RNDIS options."
           fi
 
+      - name: Fix old kernel scripts for modern Ubuntu
+        run: |
+          cd kernel
+
+          echo "Fixing GCC 10+ dtc yylloc issue..."
+          echo 'HOSTCFLAGS += -fcommon' >> Makefile
+
+          echo "Converting old MTK Python2 DCT scripts to Python3..."
+          python3 -m lib2to3 -w tools/dct/*.py || true
+
+          echo "Checking python version:"
+          python --version
+          python3 --version
+
       - name: Build kernel Image.gz-dtb
         run: |
           cd kernel
@@ -88,8 +102,9 @@ jobs:
           export SUBARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-          export KCFLAGS=-Wno-error
-          export HOSTCFLAGS=-Wno-error
+
+          export KCFLAGS="-Wno-error"
+          export HOSTCFLAGS="-fcommon -Wno-error"
 
           echo "Using original kernel dandelion_defconfig..."
           make dandelion_defconfig
@@ -114,10 +129,10 @@ jobs:
           grep -E "CONFIG_CC_STACKPROTECTOR" .config || true
 
           echo "Final HID/RNDIS config:"
-          grep -E "CONFIG_USB_GADGET|CONFIG_USB_CONFIGFS|CONFIG_USB_CONFIGFS_HID|CONFIG_USB_CONFIGFS_RNDIS|CONFIG_USB_CONFIGFS_F_HID|CONFIG_HID|CONFIG_USB_HID" .config || true
+          grep -E "CONFIG_USB_GADGET|CONFIG_USB_CONFIGFS|CONFIG_USB_CONFIGFS_F_HID|CONFIG_USB_CONFIGFS_RNDIS|CONFIG_HID|CONFIG_USB_HID" .config || true
 
-          echo "Building with GCC..."
-          make -j$(nproc) Image.gz-dtb
+          echo "Building..."
+          make -j$(nproc) HOSTCFLAGS="-fcommon -Wno-error" Image.gz-dtb
 
           echo "Built files:"
           ls -lh arch/arm64/boot/Image.gz-dtb
