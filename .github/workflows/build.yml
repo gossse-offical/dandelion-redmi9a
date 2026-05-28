@@ -87,14 +87,16 @@ jobs:
           echo "Fixing GCC 10+ dtc yylloc issue..."
           echo 'HOSTCFLAGS += -fcommon' >> Makefile
 
-          echo "Converting old MTK Python2 DCT scripts to Python3..."
-          python3 -m lib2to3 -w tools/dct/*.py tools/dct/obj/*.py || true
+          echo "Converting ALL old MTK Python2 DCT scripts to Python3..."
+          python3 -m lib2to3 -w -n tools/dct || true
 
-          echo "Checking DCT files:"
-          ls -la tools/dct
-          ls -la tools/dct/obj | head -50
+          echo "Checking remaining old print syntax:"
+          grep -R "print " -n tools/dct | head -100 || true
 
-          echo "Checking python version:"
+          echo "Checking DCT folders:"
+          find tools/dct -maxdepth 3 -type f -name "*.py" | sort | head -200
+
+          echo "Python versions:"
           python --version
           python3 --version
 
@@ -110,8 +112,7 @@ jobs:
           export KCFLAGS="-Wno-error"
           export HOSTCFLAGS="-fcommon -Wno-error"
 
-          # Важно для старых MTK DCT Python-скриптов
-          export PYTHONPATH="$PWD/tools/dct:$PWD/tools/dct/obj:${PYTHONPATH:-}"
+          export PYTHONPATH="$PWD/tools/dct:$PWD/tools/dct/obj:$PWD/tools/dct/utility:${PYTHONPATH:-}"
 
           echo "PYTHONPATH:"
           echo "$PYTHONPATH"
