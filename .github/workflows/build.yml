@@ -6,13 +6,14 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    container: ubuntu:18.04
+    container: ubuntu:20.04
 
     steps:
       - name: Install basic tools for checkout
         run: |
           apt-get update
-          apt-get install -y git ca-certificates curl wget unzip zip
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            git ca-certificates curl wget unzip zip
 
       - name: Checkout wrapper repo
         uses: actions/checkout@v4
@@ -20,13 +21,13 @@ jobs:
       - name: Install dependencies
         run: |
           apt-get update
-          apt-get install -y \
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
             bc bison build-essential ccache curl flex \
             gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
             git libncurses5-dev libssl-dev libelf-dev \
-            make python python2.7 unzip wget zip
+            make python2 python2-minimal unzip wget zip
 
-          ln -sf /usr/bin/python2.7 /usr/bin/python
+          ln -sf /usr/bin/python2 /usr/bin/python
 
           echo "Python version:"
           python --version
@@ -93,6 +94,16 @@ jobs:
             echo "::warning::Build will continue with existing CONFIGFS HID/RNDIS options."
           fi
 
+      - name: Fix old kernel scripts for modern compiler
+        run: |
+          cd kernel
+
+          echo "Fixing GCC 10+ dtc yylloc issue..."
+          echo 'HOSTCFLAGS += -fcommon' >> Makefile
+
+          echo "Python:"
+          python --version
+
       - name: Build kernel Image.gz-dtb
         run: |
           cd kernel
@@ -103,9 +114,8 @@ jobs:
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 
           export KCFLAGS="-Wno-error"
-          export HOSTCFLAGS="-Wno-error"
-
-          export PYTHON=/usr/bin/python2.7
+          export HOSTCFLAGS="-fcommon -Wno-error"
+          export PYTHON=/usr/bin/python2
 
           echo "Using python:"
           python --version
@@ -130,11 +140,14 @@ jobs:
 
           make olddefconfig
 
+          echo "Final stack protector config:"
+          grep -E "CONFIG_CC_STACKPROTECTOR" .config || true
+
           echo "Final HID/RNDIS config:"
           grep -E "CONFIG_USB_GADGET|CONFIG_USB_CONFIGFS|CONFIG_USB_CONFIGFS_F_HID|CONFIG_USB_CONFIGFS_RNDIS|CONFIG_HID|CONFIG_USB_HID" .config || true
 
           echo "Building..."
-          make -j$(nproc) Image.gz-dtb
+          make -j$(nproc) HOSTCFLAGS="-fcommon -Wno-error" Image.gz-dtb
 
           echo "Built files:"
           ls -lh arch/arm64/boot/Image.gz-dtb
