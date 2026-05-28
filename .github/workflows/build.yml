@@ -143,6 +143,36 @@ jobs:
           grep -n "DVFSRC_SW_BW_0" drivers/devfreq/mtk_dvfsrc_reg_mt6765.h || true
           grep -n "DVFSRC_RSRV_0" drivers/devfreq/mtk_dvfsrc_reg_mt6765.h || true
 
+      - name: Force direct MT6765 DVFSRC include
+        run: |
+          cd kernel
+
+          echo "Forcing direct include of MT6765 DVFSRC registers..."
+
+          echo "Available DVFSRC headers:"
+          find drivers/devfreq -name "*dvfsrc*reg*.h" -print || true
+          find drivers/devfreq -name "*dvfsrc*.h" -print || true
+
+          echo "Checking needed register definitions:"
+          grep -R "DVFSRC_EMI_REQUEST" -n drivers/devfreq || true
+          grep -R "DVFSRC_VCORE_REQUEST" -n drivers/devfreq || true
+          grep -R "DVFSRC_LEVEL_LABEL" -n drivers/devfreq || true
+
+          echo "Adding direct include into helio-dvfsrc-mt6765.c..."
+          if ! grep -q 'mtk_dvfsrc_reg_mt6765.h' drivers/devfreq/helio-dvfsrc-mt6765.c; then
+            sed -i '/#include.*helio-dvfsrc.h/a #include "mtk_dvfsrc_reg_mt6765.h"' \
+              drivers/devfreq/helio-dvfsrc-mt6765.c
+          fi
+
+          echo "Adding include path to drivers/devfreq/Makefile..."
+          cat >> drivers/devfreq/Makefile <<'EOF'
+
+          # MT6765 DVFSRC build fix
+          ccflags-y += -I$(srctree)/drivers/devfreq
+          EOF
+
+          echo "Resulting includes:"
+          grep -n "#include" drivers/devfreq/helio-dvfsrc-mt6765.c | head -30
       - name: Fix old kernel scripts for modern compiler
         run: |
           cd kernel
