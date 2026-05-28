@@ -182,7 +182,21 @@ jobs:
 
           echo "Python:"
           python --version
+      - name: Fix MTK kpd printk format
+        run: |
+          cd kernel
 
+          echo "Fixing MTK keyboard printk format warning..."
+
+          grep -n "kpdwr_status" drivers/input/keyboard/mediatek/kpd.c || true
+
+          sed -i \
+            's/kpdwr_status = %d\\n", kpdwr_status/kpdwr_status = %lu\\n", kpdwr_status/g' \
+            drivers/input/keyboard/mediatek/kpd.c
+
+          echo "After patch:"
+          grep -n "kpdwr_status" drivers/input/keyboard/mediatek/kpd.c || true
+          
       - name: Build kernel Image.gz-dtb
         run: |
           cd kernel
